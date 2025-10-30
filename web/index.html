@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Porównywarka miniatur KBC</title>
+<style>
+:root{
+  --bg:#0b0b0b;--panel:rgba(20,20,20,.85);--stroke:rgba(255,255,255,.08);
+  --text:#f4f4f4;--muted:#9d9d9d;--accent:#1e90ff;--radius:14px;--gap:18px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg);color:var(--text);
+  font:500 15px/1.5 -apple-system,BlinkMacSystemFont,'SF Pro Display',Segoe UI,Roboto,Inter,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+body::after{
+  content:"kbc";position:fixed;inset:auto 28px 28px auto;
+  color:#ffffff10;font-weight:900;font-size:72px;letter-spacing:.1em;
+  pointer-events:none;user-select:none;
+}
+
+/* Toggle przycisk */
+#toggleHUD{
+  position:fixed;top:10px;right:18px;z-index:200;
+  background:rgba(30,144,255,.25);border:1px solid var(--accent);
+  color:#fff;padding:6px 14px;border-radius:12px;font-size:14px;
+  cursor:pointer;transition:.3s background;
+}
+#toggleHUD:hover{background:rgba(30,144,255,.4)}
+
+/* Topbar (panel) */
+.topbar{
+  position:sticky;top:0;z-index:100;background:var(--panel);
+  backdrop-filter:blur(24px)saturate(180%);
+  border-bottom:1px solid var(--stroke);
+  box-shadow:0 4px 20px rgba(0,0,0,.3);
+}
+.container{max-width:1400px;margin:0 auto;padding:14px}
+.hud{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
+.card{grid-column:span 12;background:rgba(255,255,255,.04);
+  border:1px solid var(--stroke);border-radius:16px;padding:12px 14px}
+.card h3{font-size:13px;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px}
+.row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.field{display:flex;flex-direction:column;gap:6px;min-width:180px}
+.field label{font-size:12px;color:var(--muted)}
+input,select,button{height:38px;border-radius:12px;border:1px solid var(--stroke);
+  background:rgba(255,255,255,.06);color:var(--text);
+  padding:0 12px;outline:none;transition:.25s border}
+input:focus,select:focus{border-color:var(--accent)}
+button{cursor:pointer}
+.btn-primary{background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:600;box-shadow:0 0 12px rgba(30,144,255,.35)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.help{color:var(--muted);font-size:12px}
+
+/* Grid */
+#gridWrap{max-width:1400px;margin:0 auto;padding:22px}
+.grid{display:grid;grid-template-columns:repeat(var(--cols,4),1fr);gap:var(--gap)}
+@media (max-width:1200px){.grid{grid-template-columns:repeat(3,1fr)}}
+@media (max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media (max-width:560px){.grid{grid-template-columns:repeat(1,1fr)}}
+
+.cardT{background:#161616;border:1px solid var(--stroke);border-radius:var(--radius);
+  overflow:hidden;display:flex;flex-direction:column;
+  box-shadow:0 8px 24px rgba(0,0,0,.4);
+  transition:transform .25s,box-shadow .25s}
+.cardT:hover{transform:translateY(-4px);box-shadow:0 16px 38px rgba(0,0,0,.55)}
+.thumb{position:relative;width:100%;aspect-ratio:16/9;background:#0a0a0a}
+.thumb img{width:100%;height:100%;object-fit:cover}
+.badge{position:absolute;right:8px;bottom:8px;background:rgba(0,0,0,.78);
+  color:#fff;padding:2px 6px;border-radius:8px;font-size:12px}
+.drag{position:absolute;left:8px;top:8px;background:rgba(0,0,0,.55);color:#fff;
+  padding:2px 6px;border-radius:6px;font-size:12px;cursor:grab;user-select:none}
+.meta{display:flex;gap:10px;align-items:flex-start;padding:12px}
+.avatar{width:38px;height:38px;border-radius:50%;overflow:hidden;flex:none;
+  border:1px solid var(--stroke);background:#222;display:flex;
+  align-items:center;justify-content:center}
+.avatar img{width:100%;height:100%;object-fit:cover}
+.avatar.fallback{background:#2b2b2b;color:#fff;font-weight:700}
+.text{min-width:0}
+.title{font-weight:700;font-size:15px;margin-bottom:3px;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.chan{color:var(--muted);font-size:13px}
+.sortable-ghost{opacity:.6}
+.sortable-chosen{transform:scale(.97)}
+.fade{animation:fade .35s ease both}
+@keyframes fade{from{opacity:0;transform:scale(.985)}to{opacity:1;transform:none}}
+.compact .grid{gap:12px}
+
+/* animacja show/hide (robiona w JS, tu tylko płynność opacity) */
+#hud{transition:opacity .18s ease}
+</style>
+<script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+</head>
+<body>
+
+<button id="toggleHUD">⤢ Ukryj panel</button>
+
+<div class="topbar" id="hud">
+  <div class="container">
+    <div class="hud">
+      <!-- Źródła -->
+      <section class="card" style="grid-column: span 12;">
+        <h3>Źródła</h3>
+        <div class="row">
+          <div class="field" style="flex:1 1 420px;min-width:320px">
+            <label>ID kanałów (po przecinku)</label>
+            <input id="channels" placeholder="UC...,UC..." value="UCqRacRGE0si-dBnYtolBe7w,UCWuKx41wAvbz_NNu1oD6bsQ">
+          </div>
+          <div class="field" style="width:120px">
+            <label>Na kanał</label>
+            <input id="perCh" type="number" min="1" max="50" value="8">
+          </div>
+          <div class="field" style="width:140px">
+            <label>Min. sekundy</label>
+            <input id="minSec" type="number" min="0" value="0">
+          </div>
+          <div class="field" style="width:200px">
+            <label>Sortowanie</label>
+            <select id="sort">
+              <option value="newest" selected>Najnowsze</option>
+              <option value="popular">Najpopularniejsze*</option>
+            </select>
+          </div>
+          <div class="row" style="gap:8px">
+            <button id="btnFetch" class="btn-primary">Pobierz</button>
+            <button id="btnShuffle" class="btn-ghost">Shuffle</button>
+            <div class="help">* „Najpopularniejsze” to przybliżenie z RSS</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Twoja karta -->
+      <section class="card" style="grid-column: span 8;">
+        <h3>Twoja karta</h3>
+        <div class="row">
+          <div class="field" style="flex:1 1 220px">
+            <label>Tytuł</label>
+            <input id="titleMe" placeholder="np. kebcio" value="kebcio">
+          </div>
+          <div class="field" style="min-width:220px">
+            <label>Miniaturka</label>
+            <input id="fileCard" type="file" accept="image/*">
+          </div>
+          <div class="field" style="min-width:220px">
+            <label>Avatar</label>
+            <input id="fileAvatar" type="file" accept="image/*">
+          </div>
+          <div class="row" style="gap:8px">
+            <button id="btnApply" class="btn-ghost">Zastosuj</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Widok -->
+      <section class="card" style="grid-column: span 4%;">
+        <h3>Widok</h3>
+        <div class="row">
+          <div class="field" style="width:140px">
+            <label>Kolumny</label>
+            <select id="cols">
+              <option value="4" selected>4</option>
+              <option value="3">3</option>
+              <option value="2">2</option>
+              <option value="1">1</option>
+            </select>
+          </div>
+          <div class="field" style="width:200px">
+            <label>Tryb</label>
+            <select id="density">
+              <option value="normal" selected>Normalny</option>
+              <option value="compact">Kompaktowy</option>
+            </select>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<div id="gridWrap"><div id="grid" class="grid"></div></div>
+
+<script>
+/* ====== selektory i stan ====== */
+const $ = (id) => document.getElementById(id);
+const grid      = $('grid');
+const gridWrap  = $('gridWrap');
+const hud       = $('hud');
+const toggleHUD = $('toggleHUD');
+
+let CURRENT = [];
+let YOUR_CARD = null;
+let sortable;
+
+/* ====== helpers ====== */
+const rnd = (n) => Math.floor(Math.random() * n);
+function setCols(v){ grid.style.setProperty('--cols', v || 4); }
+setCols( $('cols')?.value || 4 );
+$('cols')?.addEventListener('change', e => setCols(e.target.value));
+$('density')?.addEventListener('change', e => {
+  gridWrap.classList.toggle('compact', e.target.value === 'compact');
+});
+
+/* równy rozkład: 1 z każdego kanału w rundach */
+function distributeEvenly(groups, countEach){
+  const out = [];
+  const max = Math.min(countEach, Math.max(...groups.map(g => g.length || 0)));
+  for(let i=0;i<max;i++){
+    for(const g of groups){ if(g[i]) out.push(g[i]); }
+  }
+  return out;
+}
+
+/* ====== render ====== */
+function render(items){
+  grid.innerHTML = '';
+  for(const it of items){
+    const card = document.createElement('article');
+    card.className = 'cardT fade';
+
+    // thumb
+    const th  = document.createElement('div'); th.className = 'thumb';
+    const img = document.createElement('img');
+    img.src   = it.thumb || it.thumbHQ || '';
+    img.loading = 'lazy';
+
+    const drag = document.createElement('div');
+    drag.className = 'drag';
+    drag.textContent = '⇅';
+
+    const badge = document.createElement('div');
+    badge.className = 'badge';
+    badge.textContent = it.duration
+      ? new Date(it.duration*1000).toISOString().substring(14,19)
+      : '';
+
+    th.append(img, drag, badge);
+
+    // meta
+    const meta = document.createElement('div'); meta.className = 'meta';
+    const av = document.createElement('div'); av.className = 'avatar';
+    const avatarUrl = it.avatar || (it.channelId ? `https://unavatar.io/youtube/${it.channelId}` : '');
+    if (avatarUrl){
+      const a = document.createElement('img'); a.src = avatarUrl; av.append(a);
+    } else {
+      av.classList.add('fallback');
+      av.textContent = (it.channelTitle||'?')[0]?.toUpperCase() || '?';
+    }
+
+    const tx  = document.createElement('div'); tx.className = 'text';
+    const h   = document.createElement('div'); h.className = 'title'; h.textContent = it.title || '';
+    const ch  = document.createElement('div'); ch.className = 'chan';  ch.textContent = it.channelTitle || '';
+    tx.append(h, ch);
+
+    meta.append(av, tx);
+    card.append(th, meta);
+    grid.append(card);
+  }
+}
+
+/* ====== drag & drop ====== */
+function enableDrag(){
+  if (sortable) sortable.destroy();
+  if (window.Sortable) {
+    sortable = new Sortable(grid, {
+      animation: 180,
+      handle: '.drag',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      easing: 'cubic-bezier(.2,.8,.2,1)'
+    });
+  }
+}
+
+/* ====== Twoja karta ====== */
+function applyYourCard(){
+  CURRENT = CURRENT.filter(x => !x.__me__);
+  if (YOUR_CARD && YOUR_CARD.thumb){
+    const me = {
+      __me__: true,
+      videoId: 'ME-' + Date.now(),
+      title: YOUR_CARD.title || 'Twój test',
+      channelTitle: 'Ty',
+      channelId: '',
+      thumb: YOUR_CARD.thumb,
+      avatar: YOUR_CARD.avatar || '',
+      duration: 0
+    };
+    CURRENT.splice(rnd(CURRENT.length + 1), 0, me);
+  }
+}
+
+/* ====== shuffle ====== */
+function shuffle(){
+  for(let i=CURRENT.length-1;i>0;i--){
+    const j = rnd(i+1);
+    [CURRENT[i], CURRENT[j]] = [CURRENT[j], CURRENT[i]];
+  }
+  render(CURRENT);
+  enableDrag();
+}
+
+/* ====== pobieranie ====== */
+async function fetchGroup(channelId, per, min, sort){
+  const url = `/api/latest?channels=${encodeURIComponent(channelId)}&max=${per}&min=${min}&sort=${encodeURIComponent(sort)}`;
+  const r = await fetch(url);
+  if (!r.ok) return [];
+  const j = await r.json();
+  return (j.items||[]).map(x => ({ ...x, channelId: x.channelId || channelId }));
+}
+
+async function fetchData(){
+  const channels = $('channels').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const per  = parseInt($('perCh').value || '8', 10);
+  const min  = parseInt($('minSec').value || '0', 10);
+  const sort = $('sort').value;
+
+  const groups=[];
+  for (const ch of channels) groups.push(await fetchGroup(ch, per, min, sort));
+
+  CURRENT = distributeEvenly(groups, per);
+  applyYourCard();
+  render(CURRENT);
+  enableDrag();
+}
+
+/* ====== upload twojej miniatury/avatara + tytuł ====== */
+$('btnApply').onclick = async () => {
+  YOUR_CARD = YOUR_CARD || {};
+  YOUR_CARD.title = $('titleMe').value.trim();
+
+  const read = f => new Promise(res => {
+    if(!f) return res(null);
+    const fr = new FileReader(); fr.onload = e => res(e.target.result); fr.readAsDataURL(f);
+  });
+
+  const [thumb, avatar] = await Promise.all([
+    read($('fileCard').files[0]),
+    read($('fileAvatar').files[0])
+  ]);
+
+  if (thumb)  YOUR_CARD.thumb  = thumb;
+  if (avatar) YOUR_CARD.avatar = avatar;
+
+  applyYourCard();
+  render(CURRENT);
+  enableDrag();
+};
+
+/* ====== akcje UI ====== */
+$('btnFetch').onclick   = fetchData;
+$('btnShuffle').onclick = shuffle;
+
+/* ====== ręczne show/hide HUD BEZ pustej przestrzeni ====== */
+toggleHUD.onclick = () => {
+  const isHidden = hud.style.display === 'none';
+  if (isHidden){
+    // show
+    hud.style.display = 'block';
+    hud.style.opacity = '0';
+    requestAnimationFrame(()=> {
+      hud.style.opacity = '1';
+    });
+    toggleHUD.textContent = '⤢ Ukryj panel';
+  } else {
+    // hide – najpierw fade, potem display:none
+    hud.style.opacity = '0';
+    setTimeout(()=> {
+      hud.style.display = 'none';
+      toggleHUD.textContent = '⤒ Pokaż panel';
+    }, 180);
+  }
+};
+
+/* start */
+fetchData();
+</script>
+</body>
+</html>
