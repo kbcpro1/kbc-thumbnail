@@ -1,7 +1,6 @@
 {
   "name": "thumbnail-compare",
   "version": "1.0.0",
-  "description": "YT thumbnail comparison tool",
   "main": "server/server.js",
   "scripts": {
     "start": "node server/server.js"
